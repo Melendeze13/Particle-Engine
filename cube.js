@@ -4,11 +4,20 @@
 var camera, scene, renderer;
 var geometry, material, mesh, cameraControl;
 var particleSystem,particleCount,particles, particle;
-var clock = new THREE.Clock(),options, spawnerOptions, particleSystem,
-container, tick = 0;
+var clock = new THREE.Clock(),optionsProjectile, projectileSpawnerOptions, particleSystem,
+container, tick = 0, tock = 0, delta, delta2;
 
 var stats;
-var spawnerOptionsArray = []; 
+var projectileSpawnerOptionsArray = [];
+var explosionSpawnerOptionsArray = []; 
+
+// var Rainbow = require('rainbowvis.js');
+var myRainbow = new Rainbow();
+
+console.log("0x" + myRainbow.colourAt(0));
+
+
+
 
 
 
@@ -47,7 +56,9 @@ function init() {
     container = document.getElementById( 'container' );
     container.appendChild( stats.dom );
 
-    particleInit();
+    // Create a static array of directions
+    // All fireworks are deterministic
+    fireworksInit();
 
 }
 
@@ -55,13 +66,17 @@ function init() {
 function animate() {
     requestAnimationFrame( animate );
 
-    // particleSystem.rotation.y += 0.01;
-    // particleSystem.rotation.x += 0.01;
-
-
-
     controls.update();
-    particlePhysics();
+    
+    if (exploded === true)
+    {
+        explosionPhysics();
+    }
+    else
+    {
+        fireworksPhysics();
+    }
+
     render();
     stats.update();
 }
@@ -80,30 +95,44 @@ function onWindowResize() {
     render();
 }
 
-// Create Particles Here
-function particleInit()
-{
+// Static Project and Explosion Options
+function fireworksInit() {
+
     particleSystem = new THREE.GPUParticleSystem( {
-        maxParticles: 1000
+        maxParticles: 10000
     } ); 
     scene.add( particleSystem );
 
-    options = {
+    optionsProjectile = {
         position: new THREE.Vector3(),
-        positionRandomness: 0.3,
+        positionRandomness: 0.4,
         velocity: new THREE.Vector3(),
-        velocityRandomness: 0.0,
+        velocityRandomness: 0.5,
         color: 0xe25822,
         colorRandomness: 0.2,
-        turbulence: 0.05,
-        lifetime: 2,
+        turbulence: 0.50,
+        lifetime: 5,
         size: 20,
         sizeRandomness: 1
     };
-    
-    for (var x = 0; x < 100; x++)
+
+    optionsExplosion = {
+        position: new THREE.Vector3(),
+        positionRandomness: 0.0,
+        velocity: new THREE.Vector3(),
+        velocityRandomness: 0.5,
+        color: 0xfff,
+        colorRandomness: 0.8,
+        turbulence: 0.08,
+        lifetime: 5,
+        size: 20,
+        sizeRandomness: 1
+    };
+
+    // Create x different amount of particles
+    for (let x = 0; x < 500; x++)
     {
-        spawnerOptions = {
+        explosionSpawnerOptions = {
             spawnRate: 1,
             horizontalSpeed: 1,
             verticalSpeed: 1,
@@ -111,103 +140,168 @@ function particleInit()
             timeScale: 1,
             gravitySpeed: 0
         };
-        spawnerOptions.horizontalSpeed = ((Math.random() * spawnerOptions.horizontalSpeed) - (spawnerOptions.horizontalSpeed/2)) * 50;
-    
-        spawnerOptions.verticalSpeed = ((Math.random() * spawnerOptions.verticalSpeed) - (spawnerOptions.verticalSpeed/2)) * 50;
 
-        spawnerOptions.zSpeed = ((Math.random() * spawnerOptions.zSpeed) - (spawnerOptions.zSpeed/2)) * 50;
-        spawnerOptions.gravitySpeed = spawnerOptions.verticalSpeed;
+        // Use a unit sphere when sampling random directions
+        var unitSphereCoordinate = new THREE.Vector3(0,0,0);
+        var max = 1, min = -1;
 
-        spawnerOptionsArray.push(spawnerOptions);
-        // console.log(spawnerOptionsArray);
+        // Choose random positive and negative values
+        unitSphereCoordinate.x = Math.random() * ((+max) - (+min)) + (+min);
+        unitSphereCoordinate.y = Math.random() * ((+max) - (+min)) + (+min);
+        unitSphereCoordinate.z = Math.random() * ((+max) - (+min)) + (+min);
+
+        // Normalize the vector to create sphereical effect
+        // This is the essential step to unit sphere sampling
+        unitSphereCoordinate = unitSphereCoordinate.normalize();
+
+
+        // Set XYZ direction for explosion
+        explosionSpawnerOptions.horizontalSpeed = unitSphereCoordinate.x * 20;
+        explosionSpawnerOptions.verticalSpeed = unitSphereCoordinate.y * 20;
+        explosionSpawnerOptions.zSpeed = unitSphereCoordinate.z * 20;
+
+
+        // Set Gravity to vertical speed the we decrement it
+        explosionSpawnerOptions.gravitySpeed = explosionSpawnerOptions.verticalSpeed;
+
+        // Push everything into an array
+        explosionSpawnerOptionsArray.push(explosionSpawnerOptions);
     }
-    // spawnerOptions = {
-    //     spawnRate: 1,
-    //     horizontalSpeed: 1,
-    //     verticalSpeed: 1,
-    //     timeScale: 1
-    // };
-    // spawnerOptions.horizontalSpeed = ((Math.random() * spawnerOptions.horizontalSpeed) - (spawnerOptions.horizontalSpeed/2)) * 50;
 
-    // spawnerOptions.verticalSpeed = ((Math.random() * spawnerOptions.verticalSpeed) - (spawnerOptions.verticalSpeed/2)) * 50;
-    // console.log(spawnerOptions.horizontalSpeed);
+    for (let x = 0; x < 10; x++)
+    {
+        projectileSpawnerOptions = {
+            spawnRate: 1,
+            horizontalSpeed: 1,
+            verticalSpeed: 1,
+            zSpeed: 1,
+            timeScale: 1,
+            gravitySpeed: 0
+        };
 
+        // Choose random direction for each xyz vector
+        projectileSpawnerOptions.horizontalSpeed = ((Math.random() * projectileSpawnerOptions.horizontalSpeed) - (projectileSpawnerOptions.horizontalSpeed/2)) * 50;
+        projectileSpawnerOptions.verticalSpeed = ((Math.random() * projectileSpawnerOptions.verticalSpeed)) * 50;
+        projectileSpawnerOptions.zSpeed = ((Math.random() * projectileSpawnerOptions.zSpeed) - (projectileSpawnerOptions.zSpeed/2)) * 50;
+
+        // Set Gravity to vertical speed the we decrement it
+        projectileSpawnerOptions.gravitySpeed = projectileSpawnerOptions.verticalSpeed;
+
+        // Push everything into an array
+        projectileSpawnerOptionsArray.push(projectileSpawnerOptions);
+    }
 }
 
-// Particles Physics
-function particlePhysics()
+
+function toHex(d) {
+    return  ("0"+(Number(d).toString(16))).slice(-2).toUpperCase()
+}
+
+// Explosion Physics
+function explosionPhysics()
 {
-    var delta = clock.getDelta() * spawnerOptions.timeScale;
-    tick += delta;
-    options.velocity.x = 0;
-    options.velocity.y = 0;
-    options.velocity.y = 0;
+    var delta2 = clock.getDelta() * explosionSpawnerOptions.timeScale;
+    tock += delta2;
 
-    // spawnerOptions.horizontalSpeed = (Math.random() * spawnerOptions.horizontalSpeed);
+    // optionsExplosion.color = ((optionsExplosion.color + delta) % 255);
 
-    // console.log(spawnerOptions.horizontalSpeed);
-    // console.log(Math.random() * spawnerOptions.horizontalSpeed);
-    
-
-    for (var x = 0; x < spawnerOptionsArray.length; x++)
+    for (var x = 0; x < explosionSpawnerOptionsArray.length; x++)
     {
             // console.log("hello");
 
-        if ( tick < 0 ) tick = 0;
-        if ( delta > 0 ) {
-            if (options.position.y < -50 || options.position.x < -50)
+        if ( tock < 0 ) tock = 0;
+        if ( delta2 > 0 ) {
+            if (optionsExplosion.position.x < (-50 + lastXY[0]) || optionsExplosion.position.y < (-50 + lastXY[1]) || optionsExplosion.position.x > (50 + lastXY[0]) || optionsExplosion.position.y > (50 + lastXY[1]))
             {
                 // console.log(posx);
-                // options.lifetime = 0;
-
-                tick = 0;
-                for (let x = 0; x < spawnerOptionsArray.length; x++)
+                 optionsExplosion.lifetime -= 0.1;
+                if (optionsExplosion.lifetime < 0)
                 {
-                // spawnerOptionsArray[x].verticalSpeed = 0;
-                // spawnerOptionsArray[x].horizontalSpeed = 0;
-                // spawnerOptionsArray[x].zSpeed = 0;
-                // spawnerOptionsArray[x].verticalSpeed = 0;
-                spawnerOptionsArray[x].gravitySpeed = spawnerOptionsArray[x].verticalSpeed;
+                    resetProjectile();
+
+                    // tock = 0;
+                    for (let x = 0; x < explosionSpawnerOptionsArray.length; x++)
+                    {
+                    // spawnerOptionsArray[x].verticalSpeed = 0;
+                    // spawnerOptionsArray[x].horizontalSpeed = 0;
+                    // spawnerOptionsArray[x].zSpeed = 0;
+                    // spawnerOptionsArray[x].verticalSpeed = 0;
+                    // explosionSpawnerOptionsArray[x].gravitySpeed = explosionSpawnerOptionsArray[x].verticalSpeed;
+                    }
+                }
+
+
+
+            }
+            // explosionSpawnerOptionsArray[x].gravitySpeed -= 0.09;
+            // console.log(spawnerOptionsArray[x].gravitySpeed);
+
+            optionsExplosion.position.x = lastXY[0] + explosionSpawnerOptionsArray[x].horizontalSpeed * tock;
+            optionsExplosion.position.y = lastXY[1] + (explosionSpawnerOptionsArray[x].gravitySpeed - 0.09)* tock;
+            optionsExplosion.position.z = explosionSpawnerOptionsArray[x].zSpeed * tock;
+            particleSystem.spawnParticle( optionsExplosion );
+
+        }
+    }
+    particleSystem.update( tock );
+}
+
+var exploded = false;
+var lastXY = [0,0];
+var projectileIndex = 1;
+
+function fireworksPhysics() 
+{
+    // if (projectileIndex === (projectileSpawnerOptionsArray.length - 1)) projectileIndex = 0;
+    delta = clock.getDelta() * projectileSpawnerOptions.timeScale;
+    tick += delta;
+        if ( tick < 0 ) tick = 0;
+        if ( delta > 0 ) {
+            // Create boundary for fireworks
+            if (optionsProjectile.position.y < -30 || optionsProjectile.position.x < -30 || optionsProjectile.position.y > 30 || optionsProjectile.position.x > 30)
+            {
+                // optionsProjectile.lifetime -= 0.1;
+                if (1)
+                {
+                    resetExplosion();
+                    lastXY[0] = (optionsProjectile.position.x);
+                    lastXY[1] = (optionsProjectile.position.y);
+
+                    for (let x = 0; x < projectileSpawnerOptionsArray.length; x++)
+                    {
+                    // spawnerOptionsArray[x].verticalSpeed = 0;
+                    // spawnerOptionsArray[x].horizontalSpeed = 0;
+                    // spawnerOptionsArray[x].zSpeed = 0;
+                    // spawnerOptionsArray[x].verticalSpeed = 0;
+                    projectileSpawnerOptionsArray[x].gravitySpeed = projectileSpawnerOptionsArray[x].verticalSpeed;
+                    }
                 }
 
 
             }
-            spawnerOptionsArray[x].gravitySpeed -= 0.1;
-            // console.log(spawnerOptionsArray[x].gravitySpeed);
+            // Make sure the firework is always shot up
+            // TODO
 
-            options.position.y = spawnerOptionsArray[x].gravitySpeed * tick;
-            options.position.x = spawnerOptionsArray[x].horizontalSpeed * tick;
-            options.position.z = spawnerOptionsArray[x].zSpeed * tick;
-            // options.size += .001
-
-            // console.log(options.position.x);
-
-            // options.position.y = (Math.random() * options.velocity.y * 80) - (options.velocity.y/2);
-
-            // options.position.x = (Math.random() * options.velocity.x * 80) - (options.velocity.x/2);
-            particleSystem.spawnParticle( options );
-
-
-            for ( let x = 0; x < spawnerOptionsArray[x].spawnRate * delta; x ++ ) {
-                // particleSystem.spawnParticle( options );
-
-
-                // options.position.x *= -1;
-                // particleSystem.spawnParticle( spawnerOptionsArray[x] );
-                // particleSystem.spawnParticle(spawnerOptionsArray[x]);
-
-
-
-            }
-    }   
-    
-    }
+            projectileSpawnerOptionsArray[projectileIndex].gravitySpeed -= 0.09;
+            optionsProjectile.position.y = projectileSpawnerOptionsArray[projectileIndex].gravitySpeed * tick;
+            optionsProjectile.position.x = projectileSpawnerOptionsArray[projectileIndex].horizontalSpeed * tick;
+            particleSystem.spawnParticle( optionsProjectile );
+        }   
     particleSystem.update( tick );
 }
 
-function fireworksInit() {
+function resetProjectile()
+{
+    optionsProjectile.lifetime = 1;
+    exploded = false;
+    tock = 0;
+    projectileIndex++;
 
+}
 
-
-
+function resetExplosion()
+{
+    optionsExplosion.lifetime = 1;
+    exploded = true;
+    tick = 0;
 }
